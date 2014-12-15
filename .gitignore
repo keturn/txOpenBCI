@@ -52,3 +52,6 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# Twisted stuff
+_trial_temp/
