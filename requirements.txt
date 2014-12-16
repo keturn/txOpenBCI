@@ -1,0 +1,2 @@
+twisted>=14.0,<14.1
+pyserial
