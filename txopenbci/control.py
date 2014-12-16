@@ -1,4 +1,19 @@
 # -*- coding: utf-8 -*-
+"""
+Players:
+
+* one who makes sure a connection to the device is open
+  - a stable presence in the community; everyone knows where to find them
+* one who holds the connection to the device
+  - may come and go with the connection
+* one who knows how to command the device
+* one who hears what the device tells us
+* those who listen, and interpret
+* those who listen, and record
+* those who listen, and display
+"""
+
+
 from twisted.application.service import Service
 from twisted.internet.protocol import ClientFactory, Protocol
 from txopenbci.serial_endpoint import SerialPortEndpoint
