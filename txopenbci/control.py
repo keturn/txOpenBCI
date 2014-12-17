@@ -61,7 +61,7 @@ class DeviceProtocol(Protocol):
     def dataReceived(self, data):
         log.msg("%s: %s" % (len(data), data))
 
-    def hangup(self):
+    def hangUp(self):
         self.command.stop_stream()
         self.transport.loseConnection()
 
@@ -93,6 +93,6 @@ class DeviceService(Service):
 
     def stopService(self):
         if self._client:
-            self._client.hangup()
+            self._client.hangUp()
             self._client = None
         Service.stopService(self)
