@@ -12,11 +12,11 @@ Players:
 * those who listen, and record
 * those who listen, and display
 """
-
+import parsley
 
 from twisted.application.service import Service
-from twisted.internet.protocol import ClientFactory, Protocol
-from txopenbci.serial_endpoint import SerialPortEndpoint
+from twisted.internet.protocol import ClientFactory
+from .serial_endpoint import SerialPortEndpoint
 
 
 BAUD_RATE = 115200
@@ -31,12 +31,18 @@ def serialOpenBCI(serialPortName, reactor):
     return SerialPortEndpoint(serialPortName, reactor, baudrate=BAUD_RATE)
 
 
+grammar = """
+idle = <(~EOT anything)+>:x EOT -> receiver.handleResponse(x)
+EOT = '$$$'
+"""
+
+
 class DeviceCommander(object):
-    def __init__(self, protocol):
-        self._protocol = protocol
+    def __init__(self, transport):
+        self._transport = transport
 
     def _write(self, content):
-        return self._protocol.transport.write(content)
+        return self._transport.write(content)
 
     def reset(self):
         self._write(CMD_RESET)
@@ -44,26 +50,31 @@ class DeviceCommander(object):
     def stop_stream(self):
         self._write(CMD_STOP)
 
-
-class DeviceProtocol(Protocol):
-
-    def __init__(self):
-        self.command = DeviceCommander(self)
-
-    def connectionMade(self):
-        log.msg("*** Connected!")
-        self.command.reset()
-
-    def connectionLost(self, reason=None):
-        log.msg("*** Disconnected! %s" % (reason,))
-        del self.command
-
-    def dataReceived(self, data):
-        log.msg("%s: %s" % (len(data), data))
-
     def hangUp(self):
-        self.command.stop_stream()
-        self.transport.loseConnection()
+        self.stop_stream()
+        self._transport.loseConnection()
+
+
+class DeviceReceiver(object):
+    currentRule = 'idle'
+
+    def __init__(self, sender):
+        self.sender = sender
+
+
+    def prepareParsing(self, parser):
+        self.sender.reset()
+
+
+    def finishParsing(self, reason):
+        pass
+
+
+    def handleResponse(self, content):
+        log.msg(content)
+
+
+DeviceProtocol = parsley.makeProtocol(grammar, DeviceCommander, DeviceReceiver)
 
 
 class DeviceProtocolFactory(ClientFactory):
@@ -93,6 +104,6 @@ class DeviceService(Service):
 
     def stopService(self):
         if self._client:
-            self._client.hangUp()
+            self._client.sender.hangUp()
             self._client = None
         Service.stopService(self)
