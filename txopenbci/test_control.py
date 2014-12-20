@@ -4,6 +4,7 @@ To test:
 * Service sets ._client after start?
 * sensor data!
 """
+import gzip
 from os import path
 import parsley
 from twisted.python.util import sibpath
@@ -15,8 +16,14 @@ from .control import DeviceProtocol, CMD_RESET, CMD_STREAM_STOP, grammar
 
 def fixture(name):
     filename = sibpath(__file__, path.join('test', name + '.raw'))
-    with file(filename, 'rb') as datafile:
-        return datafile.read()
+    if path.exists(filename + '.gz'):
+        # some fixtures are gzipped to prevent git and other tools from messing with
+        # their line endings.
+        with gzip.open(filename + '.gz') as datafile:
+            return datafile.read()
+    else:
+        with file(filename, 'rb') as datafile:
+            return datafile.read()
 
 
 class TestDeviceProtocol(TestCase):
