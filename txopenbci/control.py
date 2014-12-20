@@ -12,6 +12,7 @@ Players:
 * those who listen, and record
 * those who listen, and display
 """
+import os
 import parsley
 
 from twisted.application.service import Service
@@ -24,7 +25,8 @@ BAUD_RATE = 115200
 from twisted.python import log
 
 CMD_RESET = b'v'
-CMD_STOP = b's'
+CMD_STREAM_START = b'b'
+CMD_STREAM_STOP = b's'
 
 
 def serialOpenBCI(serialPortName, reactor):
@@ -34,6 +36,13 @@ def serialOpenBCI(serialPortName, reactor):
 grammar = """
 idle = <(~EOT anything)+>:x EOT -> receiver.handleResponse(x)
 EOT = '$$$'
+
+sampleStream = sample+
+sample = SAMPLE_START <anything{31}>:x SAMPLE_END -> receiver.sampleData(x)
+SAMPLE_START = '\xA0'
+SAMPLE_END = '\xC0'
+
+debug = anything:x -> receiver.logIncoming(x)
 """
 
 
@@ -47,8 +56,12 @@ class DeviceCommander(object):
     def reset(self):
         self._write(CMD_RESET)
 
+    def start_stream(self):
+        self._write(CMD_STREAM_START)
+
     def stop_stream(self):
-        self._write(CMD_STOP)
+        log.msg("sending stop command")
+        self._write(CMD_STREAM_STOP)
 
     def hangUp(self):
         self.stop_stream()
@@ -59,7 +72,11 @@ class DeviceReceiver(object):
     currentRule = 'idle'
 
     def __init__(self, sender):
+        """
+        :type sender: DeviceCommander
+        """
         self.sender = sender
+        self._debugLog = None
 
 
     def prepareParsing(self, parser):
@@ -69,10 +86,23 @@ class DeviceReceiver(object):
     def finishParsing(self, reason):
         pass
 
+    def logIncoming(self, data):
+        if not self._debugLog:
+            filename = 'debug.%x.raw' % (os.getpid(),)
+            self._debugLog = file(filename, 'wb')
+        self._debugLog.write(data)
 
     def handleResponse(self, content):
         log.msg(content)
+        # sw33t hacks to capture some debug data
+        # log.msg("entering debug dump mode")
+        # self.currentRule = 'debug'
+        # self.sender.start_stream()
+        # from twisted.internet import reactor
+        # reactor.callLater(0.4, self.sender.stop_stream)
 
+    def handleSample(self, sample):
+        pass
 
 DeviceProtocol = parsley.makeProtocol(grammar, DeviceCommander, DeviceReceiver)
 
