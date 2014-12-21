@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 To test:
-* Service sets ._client after start?
 * sensor data!
 """
 
@@ -36,6 +35,13 @@ class TestDeviceCommander(TestCase):
     def setUp(self):
         self.endpoint = StringTransportEndpoint()
         self.commander = DeviceCommander()
+
+    def test_connectSetsClient(self):
+        self.commander.connect(self.endpoint)
+        transport = self.endpoint.transports[0]
+        self.assertIsNotNone(transport)
+        self.assertIsNotNone(self.commander.client)
+        self.assertEqual(transport, self.commander.client.transport)
 
     def test_resetOnConnect(self):
         self.commander.connect(self.endpoint)
