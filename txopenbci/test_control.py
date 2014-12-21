@@ -13,7 +13,7 @@ from twisted.test.proto_helpers import StringTransport
 
 from twisted.trial.unittest import TestCase
 from .control import DeviceProtocol, CMD_RESET, CMD_STREAM_STOP, grammar, \
-    python_int32From3Bytes, numpy_int32From3Bytes
+    python_int32From3Bytes, numpy_int32From3Bytes, DeviceCommander
 
 try:
     import numpy
@@ -45,10 +45,20 @@ class TestDeviceProtocol(TestCase):
         self.protocol.makeConnection(self.transport)
         self.assertEqual(CMD_RESET, self.transport.value())
 
+
+class TestDeviceCommander(TestCase):
+    def setUp(self):
+        # this test could be more uncoupled from the specific DeviceProtocol implementation
+        # (e.g. when there are multiple versions of the protocol we want to support.)
+        self.protocol = DeviceProtocol()
+        self.transport = StringTransport()
+        self.commander = DeviceCommander()
+
     def test_stopOnHangUp(self):
         self.protocol.makeConnection(self.transport)
+        self.commander._setClient(self.protocol)
         self.transport.clear()
-        self.protocol.sender.hangUp()
+        self.commander.hangUp()
         self.assertEqual(CMD_STREAM_STOP, self.transport.value())
         self.assertTrue(self.transport.disconnecting)
 

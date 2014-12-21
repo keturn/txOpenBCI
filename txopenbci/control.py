@@ -24,8 +24,11 @@ import parsley
 
 try:
     import numpy
-except ImportError:
+except ImportError, e:
     numpy = None
+    numpy_reason = e
+else:
+    numpy_reason = None
 
 from .serial_endpoint import SerialPortEndpoint
 
@@ -54,7 +57,6 @@ SAMPLE_END = '\xC0'
 
 debug = anything:x -> receiver.logIncoming(x)
 uint8 = anything:x -> ord(x)
-int24 = <anything{3}>
 """
 
 
@@ -127,10 +129,6 @@ class DeviceSender(object):
         log.msg("sending stop command")
         self._write(CMD_STREAM_STOP)
 
-    def hangUp(self):
-        self.stop_stream()
-        self._transport.loseConnection()
-
 
 class DeviceReceiver(object):
     currentRule = 'idle'
@@ -141,6 +139,11 @@ class DeviceReceiver(object):
         """
         self.sender = sender
         self._debugLog = None
+
+
+    def setCallbacks(self, finishParsing):
+        # noinspection PyAttributeOutsideInit
+        self.finishParsing = finishParsing
 
 
     def prepareParsing(self, parser):
@@ -166,7 +169,8 @@ class DeviceReceiver(object):
         # from twisted.internet import reactor
         # reactor.callLater(0.4, self.sender.stop_stream)
 
-    def handleSample(self, sample):
+
+    def handleSample(self, counter, sample):
         pass
 
 DeviceProtocol = parsley.makeProtocol(grammar, DeviceSender, DeviceReceiver,
@@ -181,28 +185,47 @@ class DeviceCommander(object):
 
     def __init__(self):
         self.client = None
+        self.sender = None
+        self.receiver = None
 
     def _setClient(self, client):
         self.client = client
-        del self._connecting
+        self.sender = client.sender
+        self.receiver = client.receiver
+        self.receiver.setCallbacks(
+            finishParsing=self._receiverFinished
+        )
+        if self._connecting:
+            del self._connecting
+
+    def _receiverFinished(self, reason):
+        log.msg("Receiver finished: %s" % (reason.getErrorMessage(),))
+        self.client = self.receiver = self.sender = None
 
     def _connectFailed(self, reason):
         log.msg(reason.getErrorMessage())
         log.msg(reason.getTraceback())
-        del self._connecting
+        if self._connecting:
+            del self._connecting
 
     def connect(self, endpoint):
         if self.client:
             raise RuntimeError("Already connected to %s" % (self.client,))
+        if self._connecting:
+            raise RuntimeError("Connection already in progress.")
         self._connecting = connectProtocol(endpoint, self.protocolClass())
         self._connecting.addCallbacks(self._setClient, self._connectFailed)
 
     def hangUp(self):
         if self.client:
-            self.client.sender.hangUp()
+            self.sender.stop_stream()
+            self.client.transport.loseConnection()
 
     def destroy(self):
-        self.client = None
+        self.hangUp()
+        self.client = self.sender = self.receiver = None
+        if self._connecting:
+            self._connecting.cancel()
 
 
 class DeviceService(Service):
@@ -213,10 +236,11 @@ class DeviceService(Service):
 
     def startService(self):
         log.msg("Starting service.")
+        if numpy_reason:
+            log.msg("Note: numpy is not available: %s" % (numpy_reason,))
         Service.startService(self)
         self.commander.connect(self.endpoint)
 
     def stopService(self):
-        self.commander.hangUp()
         self.commander.destroy()
         Service.stopService(self)
