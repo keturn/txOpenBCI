@@ -15,6 +15,14 @@ from twisted.trial.unittest import TestCase
 from .control import DeviceProtocol, CMD_RESET, CMD_STREAM_STOP, grammar, \
     python_int32From3Bytes, numpy_int32From3Bytes
 
+try:
+    import numpy
+except ImportError, e:
+    numpy = None
+    numpy_reason = e
+else:
+    numpy_reason = None
+
 
 def fixture(name):
     filename = sibpath(__file__, path.join('test', name + '.raw'))
@@ -106,3 +114,6 @@ class TestBitTwiddle(TestCase):
 
     def test_numpy_int32From3Bytes(self):
         return self._test_int32From3Bytes(numpy_int32From3Bytes)
+
+    if numpy is None:
+        test_numpy_int32From3Bytes.skip = "could not load numpy: %s" % (numpy_reason,)
