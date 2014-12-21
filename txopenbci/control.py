@@ -110,7 +110,7 @@ else:
     int32From3Bytes = python_int32From3Bytes
 
 
-class DeviceCommander(object):
+class DeviceSender(object):
     def __init__(self, transport):
         self._transport = transport
 
@@ -137,7 +137,7 @@ class DeviceReceiver(object):
 
     def __init__(self, sender):
         """
-        :type sender: DeviceCommander
+        :type sender: DeviceSender
         """
         self.sender = sender
         self._debugLog = None
@@ -168,7 +168,7 @@ class DeviceReceiver(object):
     def handleSample(self, sample):
         pass
 
-DeviceProtocol = parsley.makeProtocol(grammar, DeviceCommander, DeviceReceiver)
+DeviceProtocol = parsley.makeProtocol(grammar, DeviceSender, DeviceReceiver)
 
 
 class DeviceProtocolFactory(ClientFactory):
