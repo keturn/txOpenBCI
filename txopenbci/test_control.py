@@ -8,11 +8,12 @@ import gzip
 from os import path
 from collections import OrderedDict
 import parsley
+from twisted.internet import defer
 from twisted.python.util import sibpath
 from twisted.test.proto_helpers import StringTransport
 
 from twisted.trial.unittest import TestCase
-from .control import DeviceProtocol, CMD_RESET, CMD_STREAM_STOP, grammar, \
+from .control import CMD_RESET, CMD_STREAM_STOP, grammar, \
     python_int32From3Bytes, numpy_int32From3Bytes, DeviceCommander
 
 try:
@@ -36,31 +37,43 @@ def fixture(name):
             return datafile.read()
 
 
-class TestDeviceProtocol(TestCase):
-    def setUp(self):
-        self.protocol = DeviceProtocol()
-        self.transport = StringTransport()
 
-    def test_resetOnConnect(self):
-        self.protocol.makeConnection(self.transport)
-        self.assertEqual(CMD_RESET, self.transport.value())
+class StringTransportEndpoint(object):
+
+    transportClass = StringTransport
+
+    def __init__(self, hostAddress=None, peerAddress=None):
+        self.hostAddress = hostAddress
+        self.peerAddress = peerAddress
+        self.transports = []
+
+    def connect(self, protocolFactory):
+        transport = self.transportClass(self.hostAddress, self.peerAddress)
+        proto = protocolFactory.buildProtocol(transport.peerAddr)
+        proto.makeConnection(transport)
+        self.transports.append(transport)
+        return defer.succeed(proto)
+
 
 
 class TestDeviceCommander(TestCase):
     def setUp(self):
-        # this test could be more uncoupled from the specific DeviceProtocol implementation
-        # (e.g. when there are multiple versions of the protocol we want to support.)
-        self.protocol = DeviceProtocol()
-        self.transport = StringTransport()
+        self.endpoint = StringTransportEndpoint()
         self.commander = DeviceCommander()
 
+    def test_resetOnConnect(self):
+        self.commander.connect(self.endpoint)
+        transport = self.endpoint.transports[0]
+        self.assertEqual(CMD_RESET, transport.value())
+
     def test_stopOnHangUp(self):
-        self.protocol.makeConnection(self.transport)
-        self.commander._setClient(self.protocol)
-        self.transport.clear()
+        self.commander.connect(self.endpoint)
+        transport = self.endpoint.transports[0]
+        transport.clear()
         self.commander.hangUp()
-        self.assertEqual(CMD_STREAM_STOP, self.transport.value())
-        self.assertTrue(self.transport.disconnecting)
+        self.assertEqual(CMD_STREAM_STOP, transport.value())
+        self.assertTrue(transport.disconnecting)
+
 
 
 class FakeReceiver(object):

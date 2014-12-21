@@ -20,7 +20,7 @@ from twisted.application.service import Service
 from twisted.internet.endpoints import connectProtocol
 from twisted.python import log
 
-import parsley
+from ._sausage import makeProtocol
 
 try:
     import numpy
@@ -42,7 +42,8 @@ CMD_STREAM_STOP = b's'
 def serialOpenBCI(serialPortName, reactor):
     return SerialPortEndpoint(serialPortName, reactor, baudrate=BAUD_RATE)
 
-
+# this is a Parsley (OMeta) grammar describing the protocol we receive
+# from the OpenBCI device.
 grammar = """
 idle = <(~EOT anything)+>:x EOT -> receiver.handleResponse(x)
 EOT = '$$$'
@@ -113,8 +114,13 @@ else:
 
 
 class DeviceSender(object):
-    def __init__(self, transport):
+    _transport = None
+
+    def setTransport(self, transport):
         self._transport = transport
+
+    def stopFlow(self):
+        self._transport = None
 
     def _write(self, content):
         return self._transport.write(content)
@@ -133,25 +139,12 @@ class DeviceSender(object):
 class DeviceReceiver(object):
     currentRule = 'idle'
 
-    def __init__(self, sender):
+    def __init__(self, commander):
         """
-        :type sender: DeviceSender
+        :type commander: DeviceCommander
         """
-        self.sender = sender
+        self.commander = commander
         self._debugLog = None
-
-
-    def setCallbacks(self, finishParsing):
-        # noinspection PyAttributeOutsideInit
-        self.finishParsing = finishParsing
-
-
-    def prepareParsing(self, parser):
-        self.sender.reset()
-
-
-    def finishParsing(self, reason):
-        log.msg(reason.getErrorMessage())
 
 
     def logIncoming(self, data):
@@ -159,6 +152,7 @@ class DeviceReceiver(object):
             filename = 'debug.%x.raw' % (os.getpid(),)
             self._debugLog = file(filename, 'wb')
         self._debugLog.write(data)
+
 
     def handleResponse(self, content):
         log.msg(content)
@@ -173,48 +167,65 @@ class DeviceReceiver(object):
     def handleSample(self, counter, sample):
         pass
 
-DeviceProtocol = parsley.makeProtocol(grammar, DeviceSender, DeviceReceiver,
-                                      name="OpenBCIDevice")
+
+    # prepareParsing and finishParsing are not called from the grammar, but
+    # from the ParserProtocol, as connection-related events.
+
+    def prepareParsing(self, parser):
+        self.commander.deviceOpen()
+
+
+    def finishParsing(self, reason):
+        self.commander.deviceLost(reason)
+
+
 
 
 class DeviceCommander(object):
 
-    protocolClass = DeviceProtocol
-
+    _senderFactory = DeviceSender
     _connecting = None
 
     def __init__(self):
         self.client = None
-        self.sender = None
-        self.receiver = None
-
-    def _setClient(self, client):
-        self.client = client
-        self.sender = client.sender
-        self.receiver = client.receiver
-        self.receiver.setCallbacks(
-            finishParsing=self._receiverFinished
-        )
-        if self._connecting:
-            del self._connecting
-
-    def _receiverFinished(self, reason):
-        log.msg("Receiver finished: %s" % (reason.getErrorMessage(),))
-        self.client = self.receiver = self.sender = None
-
-    def _connectFailed(self, reason):
-        log.msg(reason.getErrorMessage())
-        log.msg(reason.getTraceback())
-        if self._connecting:
-            del self._connecting
+        self.sender = DeviceSender()
+        self.receiver = DeviceReceiver(self)
+        self._protocolClass = makeProtocol(
+            grammar, self.sender, self.receiver,
+            name="OpenBCIDevice")
 
     def connect(self, endpoint):
         if self.client:
             raise RuntimeError("Already connected to %s" % (self.client,))
         if self._connecting:
             raise RuntimeError("Connection already in progress.")
-        self._connecting = connectProtocol(endpoint, self.protocolClass())
+        self._connecting = connectProtocol(endpoint, self._protocolClass())
         self._connecting.addCallbacks(self._setClient, self._connectFailed)
+
+    def _setClient(self, client):
+        self.client = client
+        self._connecting = None
+
+    def _connectFailed(self, reason):
+        log.msg(reason.getErrorMessage())
+        self._connecting = None
+
+
+    # == Events we get from DeviceReceiver ==
+
+    def deviceOpen(self):
+        # Send the reset command, so we know we're starting with a predictable
+        # state.
+        self.sender.reset()
+
+
+    def deviceLost(self, reason):
+        log.msg("Receiver finished: %s" % (reason.getErrorMessage(),))
+        self.client = None
+        self.sender.stopFlow()  # should be lower-level
+
+
+    # == Outward-facing commands: ==
 
     def hangUp(self):
         if self.client:
@@ -223,9 +234,10 @@ class DeviceCommander(object):
 
     def destroy(self):
         self.hangUp()
-        self.client = self.sender = self.receiver = None
+        self.client = None
         if self._connecting:
             self._connecting.cancel()
+
 
 
 class DeviceService(Service):
