@@ -6,12 +6,14 @@ To test:
 """
 import gzip
 from os import path
+from collections import OrderedDict
 import parsley
 from twisted.python.util import sibpath
 from twisted.test.proto_helpers import StringTransport
 
 from twisted.trial.unittest import TestCase
-from .control import DeviceProtocol, CMD_RESET, CMD_STREAM_STOP, grammar
+from .control import DeviceProtocol, CMD_RESET, CMD_STREAM_STOP, grammar, \
+    python_int32From3Bytes, numpy_int32From3Bytes
 
 
 def fixture(name):
@@ -51,8 +53,8 @@ class FakeReceiver(object):
     def handleResponse(self, content):
         self.results.append(content)
 
-    def sampleData(self, sample):
-        self.samples.append(sample)
+    def sampleData(self, *a):
+        self.samples.append(a)
 
 
 class TestGrammar(TestCase):
@@ -72,5 +74,35 @@ class TestGrammar(TestCase):
 
     def test_dataSample(self):
         self.grammar(fixture('stream_16samples')).sampleStream()
-        self.assertEqual(16, len(self.receiver.samples))
+        samples = self.receiver.samples
+        self.assertEqual(16, len(samples))
+        self.assertEqual(0, samples[0][0])
+        self.assertEqual(15, samples[-1][0])
 
+
+int24cases = OrderedDict([
+    ('max', (b'\x7F\xFF\xFF', 2 ** 23 - 1)),
+    ('one', (b'\x00\x00\x01', 1)),
+    ('other', (b'\x02\x04\x08', 0x20408)),
+    ('another', (b'\x02\x8F\x08', 0x28F08)),
+    ('min', (b'\x80\x00\x00', -(2 ** 23))),
+    ('neg-one', (b'\xFF\xFF\xFF', -1)),
+])
+
+
+class TestBitTwiddle(TestCase):
+
+    def _test_int32From3Bytes(self, func):
+        for name, (in_bytes, number) in int24cases.items():
+            result = func(in_bytes)
+            self.assertEqual(1, len(result))
+            result = result[0]
+            self.assertEqual(number, result,
+                             "%s: %x is not expected %x" %
+                             (name, result, number))
+
+    def test_python_int32From3Bytes(self):
+        return self._test_int32From3Bytes(python_int32From3Bytes)
+
+    def test_numpy_int32From3Bytes(self):
+        return self._test_int32From3Bytes(numpy_int32From3Bytes)
