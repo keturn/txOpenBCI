@@ -78,9 +78,10 @@ def python_int32From3Bytes(buf, count=-1, offset=0):
     if count == -1:
         count = len(buf) / 3
     sizedStruct = _i3Struct[count - 1]
+    # this unpacks to an alternating sequence of high bytes and lower 16-bits
     parts = sizedStruct.unpack_from(buf, offset=offset)
-    # start by grabbing the high bytes
-    output = array('l', parts[::2])
+    high = parts[::2]  # start by grabbing the high bytes
+    output = array('l', high)  # put them into an array of 32-bit ints
     for i, low in enumerate(parts[1::2]):
         output[i] <<= 16  # push them up by 16 bits
         output[i] |= low  # fill in the lower 16 bits
