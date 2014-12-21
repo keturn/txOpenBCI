@@ -14,22 +14,22 @@ Players:
 """
 from array import array
 import os
-import parsley
 from struct import Struct
+
+from twisted.application.service import Service
+from twisted.internet.endpoints import connectProtocol
+from twisted.python import log
+
+import parsley
 
 try:
     import numpy
 except ImportError:
     numpy = None
 
-from twisted.application.service import Service
-from twisted.internet.protocol import ClientFactory
 from .serial_endpoint import SerialPortEndpoint
 
-
 BAUD_RATE = 115200
-
-from twisted.python import log
 
 CMD_RESET = b'v'
 CMD_STREAM_START = b'b'
@@ -148,7 +148,8 @@ class DeviceReceiver(object):
 
 
     def finishParsing(self, reason):
-        pass
+        log.msg(reason.getErrorMessage())
+
 
     def logIncoming(self, data):
         if not self._debugLog:
@@ -168,36 +169,54 @@ class DeviceReceiver(object):
     def handleSample(self, sample):
         pass
 
-DeviceProtocol = parsley.makeProtocol(grammar, DeviceSender, DeviceReceiver)
+DeviceProtocol = parsley.makeProtocol(grammar, DeviceSender, DeviceReceiver,
+                                      name="OpenBCIDevice")
 
 
-class DeviceProtocolFactory(ClientFactory):
-    protocol = DeviceProtocol
+class DeviceCommander(object):
+
+    protocolClass = DeviceProtocol
+
+    _connecting = None
+
+    def __init__(self):
+        self.client = None
+
+    def _setClient(self, client):
+        self.client = client
+        del self._connecting
+
+    def _connectFailed(self, reason):
+        log.msg(reason.getErrorMessage())
+        log.msg(reason.getTraceback())
+        del self._connecting
+
+    def connect(self, endpoint):
+        if self.client:
+            raise RuntimeError("Already connected to %s" % (self.client,))
+        self._connecting = connectProtocol(endpoint, self.protocolClass())
+        self._connecting.addCallbacks(self._setClient, self._connectFailed)
+
+    def hangUp(self):
+        if self.client:
+            self.client.sender.hangUp()
+
+    def destroy(self):
+        self.client = None
 
 
 class DeviceService(Service):
-    _client = None
 
     def __init__(self, endpoint):
         self.endpoint = endpoint
-        self.protoFactory = DeviceProtocolFactory()
-
-    def connect(self):
-        if self._client:
-            raise RuntimeError("Already connected to %s" % (self._client,))
-        self.endpoint.connect(self.protoFactory)\
-            .addCallback(self._setClient)
-
-    def _setClient(self, client):
-        self._client = client
+        self.commander = DeviceCommander()
 
     def startService(self):
         log.msg("Starting service.")
         Service.startService(self)
-        self.connect()
+        self.commander.connect(self.endpoint)
 
     def stopService(self):
-        if self._client:
-            self._client.sender.hangUp()
-            self._client = None
+        self.commander.hangUp()
+        self.commander.destroy()
         Service.stopService(self)
