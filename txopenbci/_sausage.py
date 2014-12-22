@@ -41,7 +41,7 @@ class ParserProtocol(Protocol):
         self.sender = sender
         self.receiver = receiver
         self._disconnecting = False
-        self._parser = TrampolinedParser(
+        self._parser = SwitchingTrampolinedParser(
             self._grammar, self.receiver, self._bindings)
 
     def connectionMade(self):
@@ -91,3 +91,17 @@ class ParserProtocol(Protocol):
         self.sender.stopFlow()
         self.receiver.finishParsing(reason)
         self._disconnecting = True
+
+
+class SwitchingTrampolinedParser(TrampolinedParser):
+    def _setupInterp(self):
+        self._currentRule = self.receiver.currentRule
+        return TrampolinedParser._setupInterp(self)
+
+
+    def receive(self, data):
+        if self.receiver.currentRule != self._currentRule:
+            if not self._interp.input.data:
+                self._setupInterp()
+
+        return TrampolinedParser.receive(self, data)
