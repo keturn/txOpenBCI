@@ -27,7 +27,7 @@ sampleStream = sample+
 sample = SAMPLE_START
     uint8:counter
     <anything{30}>:x
-    SAMPLE_END -> receiver.sampleData(counter, x)
+    SAMPLE_END -> receiver.handleSample(counter, x)
 SAMPLE_START = '\xA0'
 SAMPLE_END = '\xC0'
 

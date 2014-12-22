@@ -40,7 +40,7 @@ class FakeReceiver(object):
     def handleResponse(self, content):
         self.results.append(content)
 
-    def sampleData(self, *a):
+    def handleSample(self, *a):
         self.samples.append(a)
 
 
