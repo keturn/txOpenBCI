@@ -203,7 +203,7 @@ class DeviceCommander(object):
 
 
     def startStream(self):
-        self.receiver.currentRule = 'sampleStream'
+        self.receiver.currentRule = 'sample'
         self.sender.start_stream()
 
 
