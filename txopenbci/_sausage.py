@@ -65,8 +65,18 @@ class ParserProtocol(Protocol):
         try:
             self._parser.receive(data)
         except Exception:
+            # TODO: rethink parser-exception handling. Even if we're treating
+            # the error as unrecoverable, we still may want to send a
+            # "goodbye" before closing the transport.
             self.connectionLost(Failure())
-            self.transport.abortConnection()
+            try:
+                abortConnection = self.transport.abortConnection
+            except AttributeError:
+                # sadly we might not have abortConnection
+                # http://twistedmatrix.com/trac/ticket/5506
+                self.transport.loseConnection()
+            else:
+                abortConnection()
             return
 
     def connectionLost(self, reason=connectionDone):
