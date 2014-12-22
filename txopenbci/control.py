@@ -13,6 +13,8 @@ Players:
 * those who listen, and display
 """
 import os
+import time
+import math
 
 from twisted.application.service import Service
 from twisted.internet.endpoints import connectProtocol
@@ -94,6 +96,7 @@ class DeviceReceiver(object):
 
 
     def handleResponse(self, content):
+        log.msg("device response:")
         log.msg(content)
         # sw33t hacks to capture some debug data
         # log.msg("entering debug dump mode")
@@ -198,6 +201,34 @@ class DeviceCommander(object):
         if self._connecting:
             self._connecting.cancel()
 
+
+    def startStream(self):
+        self.receiver.currentRule = 'sampleStream'
+        self.sender.start_stream()
+
+
+
+class TimingWatchdog(object):
+    def __init__(self):
+        self.times = [float('NaN')] * 250
+        self.lastTime = float('NaN')
+        self.lastCount = None
+
+    def handleSample(self, sample):
+        c = sample.counter
+        if self.lastCount is not None:
+            increment = (c - self.lastCount) % 256
+            if increment != 1:
+                dropped = increment - 1
+                log.msg("Dropped %s samples (%s..%s)" % (dropped, self.lastCount, c))
+        self.lastCount = c
+        now = time.clock()
+        delta = now - self.lastTime
+        self.times[c % 250] = delta
+        if (c % 250) == 0 and not math.isnan(delta):
+            total = sum(self.times)
+            log.msg("Time for 250 samples: %s" % (total,))
+        self.lastTime = now
 
 
 class DeviceService(Service):
