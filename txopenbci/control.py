@@ -16,6 +16,7 @@ import os
 
 from twisted.application.service import Service
 from twisted.internet.endpoints import connectProtocol
+from twisted.internet.error import ConnectionClosed
 from twisted.python import log
 
 from ._sausage import makeProtocol
@@ -175,9 +176,13 @@ class DeviceCommander(object):
 
 
     def deviceLost(self, reason):
-        log.msg("Receiver finished: %s" % (reason.getErrorMessage(),))
+        if not reason.check(ConnectionClosed):
+            log.msg("Parser error: %s" % (reason.getErrorMessage(),))
+            log.msg(reason.getTraceback())
+        else:
+            log.msg("Receiver finished: %s" % (reason.getErrorMessage(),))
+
         self.client = None
-        self.sender.stopFlow()  # should be lower-level
 
 
     # == Outward-facing commands: ==
