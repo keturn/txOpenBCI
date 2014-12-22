@@ -61,6 +61,18 @@ class DeviceSender(object):
         self._write(protocol.CMD_STREAM_STOP)
 
 
+class RawSample(object):
+    __slots__ = ['counter', 'eeg', 'accelerometer']
+
+    def __init__(self, counter, eeg, accelerometer):
+        self.counter = counter
+        self.eeg = eeg
+        self.accelerometer = accelerometer
+
+    def __hash__(self):
+        return hash((self.counter, self.eeg, self.accelerometer))
+
+
 class DeviceReceiver(object):
     currentRule = 'idle'
 
@@ -70,6 +82,7 @@ class DeviceReceiver(object):
         """
         self.commander = commander
         self._debugLog = None
+        self._sampleSubscribers = set()
 
 
     def logIncoming(self, data):
@@ -90,7 +103,25 @@ class DeviceReceiver(object):
 
 
     def handleSample(self, counter, sample):
-        pass
+        # TODO: handle wrapping counter
+        # TODO: handle skipped packets
+        if self._sampleSubscribers:
+            eeg = protocol.int32From3Bytes(sample, 8, 0)
+            accelerometer = protocol.accelerometerFromBytes(sample, 24)
+            sample = RawSample(counter, eeg, accelerometer)
+            self._publishSample(sample)
+
+
+    def _publishSample(self, sample):
+        for listener in self._sampleSubscribers:
+            listener(sample)
+
+
+
+    # == Interfaces for subscribers ==
+
+    def subscribeToSampleData(self, listener):
+        self._sampleSubscribers.add(listener)
 
 
     # prepareParsing and finishParsing are not called from the grammar, but

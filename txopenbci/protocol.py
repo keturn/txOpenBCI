@@ -64,6 +64,14 @@ def python_int32From3Bytes(buf, count=-1, offset=0):
     return output
 
 
+_accelerometerStruct = Struct('>hhh')
+
+
+def python_accelerometerFromBytes(buf, offset=0):
+    parts = _accelerometerStruct.unpack_from(buf, offset=offset)
+    return array('h', parts)
+
+
 if numpy:
     _i1u2 = numpy.dtype([('high', 'i1'), ('low', '>u2')])
 
@@ -80,8 +88,16 @@ def numpy_int32From3Bytes(buf, count=-1, offset=0):
     return output
 
 
+def numpy_accelerometerFromBytes(buf, offset=0):
+    in_array = numpy.frombuffer(buf, '>i2', count=3, offset=offset)
+    # that was much easier than 24-bit ints, but we'll still copy it to native byte order.
+    return in_array.astype('i2')
+
+
 if numpy:
     int32From3Bytes = numpy_int32From3Bytes
+    accelerometerFromBytes = numpy_accelerometerFromBytes
 else:
     int32From3Bytes = python_int32From3Bytes
+    accelerometerFromBytes = python_accelerometerFromBytes
 

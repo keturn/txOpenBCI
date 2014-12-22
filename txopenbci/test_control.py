@@ -9,7 +9,7 @@ from twisted.test.proto_helpers import StringTransport
 
 from twisted.trial.unittest import TestCase
 from .protocol import CMD_RESET, CMD_STREAM_STOP
-from .control import DeviceCommander
+from .control import DeviceCommander, DeviceReceiver, RawSample
 
 
 
@@ -55,3 +55,57 @@ class TestDeviceCommander(TestCase):
         self.commander.hangUp()
         self.assertEqual(CMD_STREAM_STOP, transport.value())
         self.assertTrue(transport.disconnecting)
+
+
+class TestDeviceReceiver(TestCase):
+    def test_subscribeToSampleData(self):
+        # noinspection PyTypeChecker
+        receiver = DeviceReceiver(None)
+        samples = []
+        listener = lambda s: samples.append(s)
+        receiver.subscribeToSampleData(listener)
+        sample = RawSample(0, (1, 2, 3, 4, 5, 6, 7, 8), (9, 16, 25))
+        receiver._publishSample(sample)
+        self.assertEqual([sample], samples)
+
+    def test_handleSample(self):
+        receiver = DeviceReceiver(None)
+        samples = []
+        listener = lambda s: samples.append(s)
+        receiver.subscribeToSampleData(listener)
+        sampleBytes = (
+            # eeg data
+            b'\x80\x00\x00'  # min
+            b'\x7F\xFF\xFF'  # max
+            b'\x00\x00\x00'  # zero
+            b'\x02\x04\x08'
+            b'\x02\x8F\x08'
+            b'\xFF\xFF\xFF'  # -1
+            b'\x00\x00\x01'  # 1
+            b'\x0F\xF0\x0F'
+            # accelerometer data
+            b'\x7F\x00'
+            b'\x00\xFF'
+            b'\xFF\xFF'
+        )
+        receiver.handleSample(0, sampleBytes)
+        counter = 0
+        eeg = [
+            -(2 ** 23),
+            2 ** 23 - 1,
+            0,
+            0x20408,
+            0x28F08,
+            -1,
+            1,
+            0xFF00F
+        ]
+        accelerometer = [
+            0x7F00,
+            0xFF,
+            -1
+        ]
+        result = samples[0]
+        self.assertEqual(counter, result.counter)
+        self.assertEqual(eeg, list(result.eeg))
+        self.assertEqual(accelerometer, list(result.accelerometer))
