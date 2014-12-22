@@ -20,7 +20,7 @@ CMD_STREAM_STOP = b's'
 # this is a Parsley (OMeta) grammar describing the protocol we receive
 # from the OpenBCI device.
 grammar = """
-idle = <(~EOT anything)+>:x EOT -> receiver.handleResponse(x)
+idle = <(~EOT anything){0,2048}>:x EOT -> receiver.handleResponse(x)
 EOT = '$$$'
 
 sampleStream = sample+
