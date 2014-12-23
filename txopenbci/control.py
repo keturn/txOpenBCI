@@ -177,6 +177,7 @@ class DeviceCommander(object):
         # Send the reset command, so we know we're starting with a predictable
         # state.
         self.sender.reset()
+        from twisted.internet import reactor
 
 
     def deviceLost(self, reason):
@@ -207,6 +208,14 @@ class DeviceCommander(object):
         self.receiver.currentRule = 'sample'
         self.sender.start_stream()
 
+
+    def stopStream(self):
+        self.sender.stop_stream()
+        # TODO: set currentRule back once stream actually ends
+
+
+    def reset(self):
+        self.sender.reset()
 
 
 class TimingWatchdog(object):
