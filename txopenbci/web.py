@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 import array
 import json
+import os.path
+from twisted.python.util import sibpath
 from twisted.web.resource import Resource, NoResource
 from twisted.web.server import NOT_DONE_YET
 from twisted.web.http import ACCEPTED
+from twisted.web.static import File
 
 try:
     import numpy
@@ -34,6 +37,11 @@ class Root(Resource):
 
         self.putChild("control", CommandResource(deviceService))
         self.putChild("stream", SampleStreamer(deviceService))
+        self.putChild("", File(os.path.join(sibpath(__file__, "webpages"), 'index.html')))
+
+    def render_GET(self, request):
+        f = File(os.path.join(sibpath(__file__, "webpages"), 'index.html'))
+        return f.render_GET(request)
 
 
 class CommandResource(Resource):
@@ -55,13 +63,14 @@ class CommandResource(Resource):
 
 
     def render_POST(self, request):
-        commandName = request.postpath
+        commandName = request.args['command'][0]
         command = self.commandMap.get(commandName)
         if command is None:
             return NoResource("Command %s not found.").render(request)
 
         command()
         request.setResponseCode(ACCEPTED)
+        return ''
 
 
 
