@@ -37,7 +37,9 @@ class Root(Resource):
 
         self.putChild("control", CommandResource(deviceService))
         self.putChild("stream", SampleStreamer(deviceService))
+        self.putChild("static", File(sibpath(__file__, "webpages")))
         self.putChild("", File(os.path.join(sibpath(__file__, "webpages"), 'index.html')))
+
 
     def render_GET(self, request):
         f = File(os.path.join(sibpath(__file__, "webpages"), 'index.html'))
